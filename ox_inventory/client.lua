@@ -34,6 +34,9 @@ local plyState = LocalPlayer.state
 local IsPedCuffed = IsPedCuffed
 local playerPed = cache.ped
 
+-- Track backpack stash state
+local backpackStash = nil
+
 lib.onCache('ped', function(ped)
 	playerPed = ped
 	Utils.WeaponWheel()
@@ -310,12 +313,10 @@ function client.openInventory(inv, data)
         end)
     end
 
-	-- Add this at the very end of the client.openInventory function, before the final return
-	if success then
-		SetTimeout(300, function()
-			TriggerServerEvent('ox_inventory:checkBackpackSlot')
-		end)
-	end
+    -- Check for backpack after opening inventory
+    SetTimeout(300, function()
+        TriggerServerEvent('ox_inventory:checkBackpackSlot')
+    end)
 
     return true
 end
@@ -905,6 +906,13 @@ function client.closeInventory(server)
 		currentInventory = nil
 		plyState.invOpen = false
 		defaultInventory.coords = nil
+		
+		-- Clear backpack stash when closing inventory
+		backpackStash = nil
+		SendNUIMessage({
+			action = 'removeBackpackStash',
+			data = { slot = 6 }
+		})
 	end
 end
 
@@ -984,6 +992,11 @@ local function updateInventory(data, weight)
 
 	client.setPlayerData('inventory', PlayerData.inventory)
 	TriggerEvent('ox_inventory:updateInventory', changes)
+	
+	-- Check backpack slot after any inventory update
+	SetTimeout(200, function()
+		TriggerServerEvent('ox_inventory:checkBackpackSlot')
+	end)
 end
 
 RegisterNetEvent('ox_inventory:updateSlots', function(items, weights)
@@ -1840,6 +1853,12 @@ RegisterNUICallback('swapItems', function(data, cb)
 		end
 	end
 
+	-- Handle backpack stash as target
+	if backpackStash and data.toType == 'stash' and data.toInventory == backpackStash then
+		data.toType = 'stash'
+		data.toInventory = backpackStash
+	end
+
 	local success, response, weaponSlot = lib.callback.await('ox_inventory:swapItems', false, data)
     swapActive = false
 
@@ -1914,19 +1933,25 @@ RegisterNUICallback('craftItem', function(data, cb)
 		client.openInventory('crafting', { id = id, index = index })
 	end
 end)
--- Add these new event handlers for backpack support
+
+-- Handle backpack equipped in slot 6 - receive full inventory data
 RegisterNetEvent('ox_inventory:backpackEquipped', function(data)
+	backpackStash = data.stashId
+	
     SendNUIMessage({
         action = 'addBackpackStash',
         data = {
             slot = data.slot,
             stashId = data.stashId,
-            inventory = data.inventory
+            inventory = data.inventory -- Full inventory data from server
         }
     })
 end)
 
+-- Handle backpack removed from slot 6
 RegisterNetEvent('ox_inventory:backpackRemoved', function(slot)
+	backpackStash = nil
+	
     SendNUIMessage({
         action = 'removeBackpackStash',
         data = {
