@@ -60,8 +60,15 @@ const isValidItemForSlot = (item: SlotWithItem, slot: number): boolean => {
       return isWeaponByProperty || isWeaponByName;
     
     case 6:
-      // Only backpacks
-      return itemName.includes('backpack');
+      // Only specific backpacks - updated for our custom backpacks
+      const backpacks = [
+        'small_backpack',
+        'medium_backpack', 
+        'large_backpack',
+        'tactical_backpack',
+        'hiking_backpack'
+      ];
+      return backpacks.includes(itemName);
     
     case 7:
       // Only parachutes
@@ -127,7 +134,6 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
         if (inventoryType === 'player' && item.slot <= 9 && source.item) {
           const sourceItem = source.item as SlotWithItem;
           if (!isValidItemForSlot(sourceItem, item.slot)) {
-            // Item not valid for this slot - cancel drop
             return;
           }
         }
@@ -140,6 +146,7 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
             onCraft(source, { inventory: inventoryType, item: { slot: item.slot } });
             break;
           default:
+            // Use the standard onDrop - ox_inventory handles different inventory types automatically
             onDrop(source, { inventory: inventoryType, item: { slot: item.slot } });
             break;
         }
@@ -158,7 +165,7 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
         return basicCanDrop;
       },
     }),
-    [inventoryType, item]
+    [inventoryType, item, inventoryId]
   );
 
   useNuiEvent('refreshSlots', (data: { items?: ItemsPayload | ItemsPayload[] }) => {

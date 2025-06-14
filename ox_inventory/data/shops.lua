@@ -80,7 +80,43 @@ return {
 			{ name = 'ammo-9', price = 5, },
 			{ name = 'WEAPON_KNIFE', price = 200 },
 			{ name = 'WEAPON_BAT', price = 100 },
-			{ name = 'WEAPON_PISTOL', price = 1000, metadata = { registered = true }, license = 'weapon' }
+			{ name = 'WEAPON_PISTOL', price = 1000, metadata = { registered = true }, license = 'weapon' },
+			{
+        name = 'small_backpack',
+        price = 1500,
+        metadata = {
+            label = 'Small Backpack',
+            description = 'A small backpack with 10 slots and 20kg capacity',
+            image = 'placeholder_backpack',
+            type = 'small',
+            slots = 10,
+            storage = 20000
+        }
+    },
+    {
+        name = 'medium_backpack',
+        price = 2500,
+        metadata = {
+            label = 'Medium Backpack',
+            description = 'A medium backpack with 20 slots and 35kg capacity',
+            image = 'placeholder_backpack',
+            type = 'medium',
+            slots = 20,
+            storage = 35000
+        }
+    },
+    {
+        name = 'large_backpack',
+        price = 4000,
+        metadata = {
+            label = 'Large Backpack',
+            description = 'A large backpack with 30 slots and 50kg capacity',
+            image = 'placeholder_backpack',
+            type = 'large',
+            slots = 30,
+            storage = 50000
+        }
+	}
 		}, locations = {
 			vec3(-662.180, -934.961, 21.829),
 			vec3(810.25, -2157.60, 29.62),

@@ -222,4 +222,54 @@ return {
 		label = 'Scrap Metal',
 		weight = 80,
 	},
+
+	   ['small_backpack'] = {
+        label = 'Small Backpack',
+        weight = 80,
+        slots = 10,
+        storage = 20, -- 20kg capacity
+        stack = false,
+        close = true,
+        description = 'A small backpack that can store up to 20kg of items'
+    },
+
+    ['medium_backpack'] = {
+        label = 'Medium Backpack',
+        weight = 120,
+        slots = 15,
+        storage = 35, -- 35kg capacity
+        stack = false,
+        close = true,
+        description = 'A medium backpack that can store up to 35kg of items'
+    },
+
+    ['large_backpack'] = {
+        label = 'Large Backpack',
+        weight = 200,
+        slots = 20,
+        storage = 50, -- 50kg capacity
+        stack = false,
+        close = true,
+        description = 'A large backpack that can store up to 50kg of items'
+    },
+
+    ['tactical_backpack'] = {
+        label = 'Tactical Backpack',
+        weight = 150,
+        slots = 25,
+        storage = 45, -- 45kg capacity
+        stack = false,
+        close = true,
+        description = 'A tactical backpack with multiple compartments, can store up to 45kg of items'
+    },
+
+    ['hiking_backpack'] = {
+        label = 'Hiking Backpack',
+        weight = 180,
+        slots = 30,
+        storage = 60, -- 60kg capacity
+        stack = false,
+        close = true,
+        description = 'A durable hiking backpack that can store up to 60kg of items'
+    },
 }

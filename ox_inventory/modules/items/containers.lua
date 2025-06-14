@@ -63,4 +63,30 @@ setContainerProperties('pizzabox', {
 	whitelist = { 'pizza' }
 })
 
+-- Manually register backpacks using the items.lua data
+setContainerProperties('small_backpack', {
+	slots = 10,
+	maxWeight = 20000,  -- 20kg in grams
+})
+
+setContainerProperties('medium_backpack', {
+	slots = 15,
+	maxWeight = 35000,  -- 35kg in grams
+})
+
+setContainerProperties('large_backpack', {
+	slots = 20,
+	maxWeight = 50000,  -- 50kg in grams
+})
+
+setContainerProperties('tactical_backpack', {
+	slots = 25,
+	maxWeight = 45000,  -- 45kg in grams
+})
+
+setContainerProperties('hiking_backpack', {
+	slots = 30,
+	maxWeight = 60000,  -- 60kg in grams
+})
+
 return containers

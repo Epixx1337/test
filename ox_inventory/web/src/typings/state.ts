@@ -1,6 +1,13 @@
 import { Inventory } from './inventory';
 import { Slot } from './slot';
 
+export type BackpackInventory = {
+  slot: number;
+  inventory: Inventory;
+  container: string;
+  collapsed: boolean;
+};
+
 export type State = {
   leftInventory: Inventory;
   rightInventory: Inventory;
@@ -12,4 +19,7 @@ export type State = {
     leftInventory: Inventory;
     rightInventory: Inventory;
   };
+  backpackInventories: BackpackInventory[];
+  leftInventoryCollapsed: boolean;
+  rightInventoryCollapsed: boolean;
 };

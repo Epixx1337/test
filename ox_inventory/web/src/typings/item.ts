@@ -9,4 +9,6 @@ export type ItemData = {
   buttons?: string[];
   ammoName?: string;
   image?: string;
+  slots?: number;     // Added for backpacks
+  storage?: number;   // Added for backpacks  
 };

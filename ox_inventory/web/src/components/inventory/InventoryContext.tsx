@@ -39,12 +39,29 @@ const InventoryContext: React.FC = () => {
   const contextMenu = useAppSelector((state) => state.contextMenu);
   const item = contextMenu.item;
 
-  const handleClick = (data: DataProps) => {
+  // Check if item is a backpack
+  const isBackpack = (itemName?: string) => {
+    if (!itemName) return false;
+    const backpacks = [
+      'small_backpack',
+      'medium_backpack', 
+      'large_backpack',
+      'tactical_backpack',
+      'hiking_backpack'
+    ];
+    return backpacks.includes(itemName);
+  };
+
+const handleClick = (data: DataProps) => {
     if (!item) return;
 
     switch (data && data.action) {
       case 'use':
         onUse({ name: item.name, slot: item.slot });
+        break;
+      case 'openBackpack':
+        // Handle opening backpack stash
+        fetchNui('useItem', { slot: item.slot });
         break;
       case 'give':
         onGive({ name: item.name, slot: item.slot });
@@ -92,7 +109,13 @@ const InventoryContext: React.FC = () => {
   return (
     <>
       <Menu>
-        <MenuItem onClick={() => handleClick({ action: 'use' })} label={Locale.ui_use || 'Use'} />
+        {/* Show "Open Backpack" instead of "Use" for backpack items */}
+        {item && isBackpack(item.name) ? (
+          <MenuItem onClick={() => handleClick({ action: 'openBackpack' })} label="Open Backpack" />
+        ) : (
+          <MenuItem onClick={() => handleClick({ action: 'use' })} label={Locale.ui_use || 'Use'} />
+        )}
+        
         <MenuItem onClick={() => handleClick({ action: 'give' })} label={Locale.ui_give || 'Give'} />
         <MenuItem onClick={() => handleClick({ action: 'drop' })} label={Locale.ui_drop || 'Drop'} />
         {item && item.metadata?.ammo > 0 && (
