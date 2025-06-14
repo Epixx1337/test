@@ -14,6 +14,33 @@ local db = require 'modules.mysql.server'
 local Items = require 'modules.items.server'
 local Inventory = require 'modules.inventory.server'
 
+-- Backpack configuration
+local backpackData = {
+    small_backpack = { slots = 10, weight = 20000 },
+    medium_backpack = { slots = 15, weight = 35000 },
+    large_backpack = { slots = 20, weight = 50000 },
+    tactical_backpack = { slots = 25, weight = 45000 },
+    hiking_backpack = { slots = 30, weight = 60000 }
+}
+
+-- Function to ensure backpack stash exists
+local function ensureBackpackStash(source, item)
+    if not item or not item.name or not backpackData[item.name] then return nil end
+    
+    if not item.metadata then item.metadata = {} end
+    
+    if not item.metadata.stashId then
+        item.metadata.stashId = ('backpack_%s_%s_%s'):format(source, item.name, os.time())
+    end
+    
+    local stashId = item.metadata.stashId
+    local itemConfig = backpackData[item.name]
+    local label = Items(item.name)?.label or item.name
+    
+    exports.ox_inventory:RegisterStash(stashId, label, itemConfig.slots, itemConfig.weight, source)
+    return stashId
+end
+
 ---@param player table
 ---@param data table?
 --- player requires source, identifier, and name
@@ -382,6 +409,28 @@ lib.callback.register('ox_inventory:useItem', function(source, itemName, slot, m
 		if not data then return end
 
 		slot = data.slot
+		
+		-- Enhanced backpack handling
+		if backpackData[data.name] then
+			ensureBackpackStash(source, data)
+			
+			if slot == 6 then
+				-- Don't consume backpack when equipped in slot 6, just trigger check
+				SetTimeout(100, function()
+					TriggerEvent('ox_inventory:checkBackpackSlot', source)
+				end)
+				return true
+			else
+				-- Open backpack stash when right-clicking from other slots
+				local stashId = ensureBackpackStash(source, data)
+				if stashId then
+					local success = exports.ox_inventory:forceOpenInventory(source, 'stash', stashId)
+					return success
+				end
+				return false
+			end
+		end
+		
 		local durability = data.metadata.durability --[[@as number|boolean|nil]]
 		local consume = item.consume
 		local label = data.metadata.label or item.label
@@ -546,7 +595,6 @@ RegisterCommand('convertinventory', function(source, args)
 	CreateThread(convert)
 end, true)
 
-
 lib.addCommand({'additem', 'giveitem'}, {
 	help = 'Gives an item to a player with the given id',
 	params = {
@@ -701,40 +749,7 @@ lib.addCommand('viewinv', {
 	Inventory.InspectInventory(source, tonumber(args.invId) or args.invId)
 end)
 
--- Add this to your existing server.lua file
-
--- Register backpack stashes when backpacks are created/equipped
-local function createBackpackStash(source, item, slot)
-    if not item or not item.name then return end
-    
-    -- Check if item is a backpack
-    local backpacks = {
-        small_backpack = { slots = 10, weight = 20000 },
-        medium_backpack = { slots = 15, weight = 35000 },
-        large_backpack = { slots = 20, weight = 50000 },
-        tactical_backpack = { slots = 25, weight = 45000 },
-        hiking_backpack = { slots = 30, weight = 60000 }
-    }
-    
-    local backpackData = backpacks[item.name]
-    if not backpackData then return end
-    
-    -- Create unique stash ID for this backpack
-    if not item.metadata then item.metadata = {} end
-    if not item.metadata.stashId then
-        item.metadata.stashId = ('backpack_%s_%s_%s'):format(source, item.name, os.time())
-    end
-    
-    -- Register the stash
-    local stashId = item.metadata.stashId
-    local label = ('%s (Slot %d)'):format(Items(item.name)?.label or item.name, slot)
-    
-    exports.ox_inventory:RegisterStash(stashId, label, backpackData.slots, backpackData.weight, source)
-    
-    return stashId, backpackData
-end
-
--- Handle backpack equipped in slot 6
+-- Backpack slot checking event
 RegisterNetEvent('ox_inventory:checkBackpackSlot', function()
     local source = source
     local inventory = Inventory(source)
@@ -742,40 +757,18 @@ RegisterNetEvent('ox_inventory:checkBackpackSlot', function()
     if not inventory then return end
     
     local backpackItem = inventory.items[6]
-    if backpackItem then
-        local backpacks = {
-            'small_backpack',
-            'medium_backpack', 
-            'large_backpack',
-            'tactical_backpack',
-            'hiking_backpack'
-        }
+    if backpackItem and backpackItem.name and backpackData[backpackItem.name] then
+        local stashId = ensureBackpackStash(source, backpackItem)
         
-        local isBackpack = false
-        for _, backpack in ipairs(backpacks) do
-            if backpackItem.name == backpack then
-                isBackpack = true
-                break
-            end
-        end
-        
-        if isBackpack then
-            local stashId, backpackData = createBackpackStash(source, backpackItem, 6)
-            if stashId then
-                -- Update the item with stash metadata
-                inventory.items[6] = backpackItem
-                
-                -- Get the stash inventory
-                local stashInventory = Inventory(stashId)
-                if not stashInventory then
-                    -- Create empty stash if it doesn't exist
-                    stashInventory = Inventory.Create(stashId, backpackItem.label or Items(backpackItem.name)?.label or 'Backpack', 'stash', backpackData.slots, 0, backpackData.weight, source)
-                end
-                
-                -- Prepare inventory data for client
+        if stashId then
+            local success, stashInventory = pcall(function()
+                return exports.ox_inventory:GetInventory(stashId)
+            end)
+            
+            if success and stashInventory then
                 local inventoryData = {
                     id = stashInventory.id,
-                    type = stashInventory.type,
+                    type = 'stash',
                     label = stashInventory.label,
                     slots = stashInventory.slots,
                     maxWeight = stashInventory.maxWeight,
@@ -783,17 +776,11 @@ RegisterNetEvent('ox_inventory:checkBackpackSlot', function()
                     groups = stashInventory.groups or {}
                 }
                 
-                -- Convert items to proper format
                 for i = 1, stashInventory.slots do
                     local item = stashInventory.items[i]
-                    if item and item.name then
-                        inventoryData.items[i] = item
-                    else
-                        inventoryData.items[i] = { slot = i }
-                    end
+                    inventoryData.items[i] = item or { slot = i }
                 end
                 
-                -- Send backpack stash info to client
                 TriggerClientEvent('ox_inventory:backpackEquipped', source, {
                     slot = 6,
                     stashId = stashId,
@@ -802,79 +789,29 @@ RegisterNetEvent('ox_inventory:checkBackpackSlot', function()
             end
         end
     else
-        -- No backpack in slot 6
         TriggerClientEvent('ox_inventory:backpackRemoved', source, 6)
     end
 end)
 
--- Handle backpack opening via right-click
-RegisterNetEvent('ox_inventory:useItem', function(slot, data)
-    local source = source
-    local inventory = Inventory(source)
-    
-    if not inventory then return end
-    
-    local item = inventory.items[slot]
-    if not item then return end
-    
-    -- Check if item is a backpack
-    local backpacks = {
-        'small_backpack',
-        'medium_backpack', 
-        'large_backpack',
-        'tactical_backpack',
-        'hiking_backpack'
-    }
-    
-    local isBackpack = false
-    for _, backpack in ipairs(backpacks) do
-        if item.name == backpack then
-            isBackpack = true
-            break
-        end
-    end
-    
-    if isBackpack then
-        local stashId = createBackpackStash(source, item, slot)
-        if stashId then
-            -- Update the item with stash metadata
-            inventory.items[slot] = item
-            
-            -- Open the stash in the right inventory using ox_inventory's standard method
-            local stashInventory = Inventory(stashId)
-            if not stashInventory then
-                -- Create the stash if it doesn't exist
-                local backpackData = {
-                    small_backpack = { slots = 10, weight = 20000 },
-                    medium_backpack = { slots = 15, weight = 35000 },
-                    large_backpack = { slots = 20, weight = 50000 },
-                    tactical_backpack = { slots = 25, weight = 45000 },
-                    hiking_backpack = { slots = 30, weight = 60000 }
-                }
-                
-                local data = backpackData[item.name]
-                if data then
-                    stashInventory = Inventory.Create(stashId, item.label or Items(item.name)?.label or 'Backpack', 'stash', data.slots, 0, data.weight, source)
-                end
-            end
-            
-            if stashInventory then
-                -- Open stash in right inventory (standard ox_inventory behavior)
-                inventory:openInventory(stashInventory)
-                TriggerClientEvent('ox_inventory:viewInventory', source, inventory, stashInventory)
-            end
-        end
+-- Event handler for when items are added (crafted/bought)
+AddEventHandler('ox_inventory:itemAdded', function(source, item, slot)
+    if backpackData[item.name] then
+        ensureBackpackStash(source, item)
     end
 end)
 
 -- Hook into slot swaps to detect backpack movement
 AddEventHandler('ox_inventory:swapSlots', function(data)
-    local source = data.source
-    
-    -- Check if something was moved to/from slot 6
     if data.toSlot == 6 or data.fromSlot == 6 then
         SetTimeout(200, function()
-            TriggerEvent('ox_inventory:checkBackpackSlot', source)
+            TriggerEvent('ox_inventory:checkBackpackSlot', data.source or data.playerId)
         end)
     end
+end)
+
+-- Enhanced inventory opening hook
+AddEventHandler('ox_inventory:openInventory', function(source, rightInventory)
+    SetTimeout(500, function()
+        TriggerEvent('ox_inventory:checkBackpackSlot', source)
+    end)
 end)

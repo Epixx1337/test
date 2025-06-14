@@ -43,7 +43,7 @@ const getPlaceholderImage = (slot: number): string => {
   }
 };
 
-// Validation functions for slot restrictions
+// Validation functions for slot restrictions (bespoke slots)
 const isValidItemForSlot = (item: SlotWithItem, slot: number): boolean => {
   const itemName = item.name.toLowerCase();
   
@@ -51,7 +51,7 @@ const isValidItemForSlot = (item: SlotWithItem, slot: number): boolean => {
     case 1:
     case 2:
       // Only weapons - check multiple ways:
-      // 1. Check if item has weapon property set to true (both original and uppercase)
+      // 1. Check if item has weapon property set to true (using any to bypass type checking)
       // 2. Fallback to checking if name starts with "weapon_"
       const itemData = Items[item.name] as any;
       const itemDataUpper = Items[item.name.toUpperCase()] as any;
@@ -87,6 +87,18 @@ const isValidItemForSlot = (item: SlotWithItem, slot: number): boolean => {
   }
 };
 
+// Check if item is a backpack
+const isBackpackItem = (itemName: string): boolean => {
+  const backpacks = [
+    'small_backpack',
+    'medium_backpack',
+    'large_backpack',
+    'tactical_backpack',
+    'hiking_backpack'
+  ];
+  return backpacks.includes(itemName);
+};
+
 const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> = (
   { item, inventoryId, inventoryType, inventoryGroups },
   ref
@@ -96,6 +108,16 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
   const timerRef = useRef<number | null>(null);
 
   const canDrag = useCallback(() => {
+    // Enhanced drag restrictions
+    if (inventoryType === InventoryType.SHOP || inventoryType === InventoryType.CRAFTING) return false;
+    if (!isSlotWithItem(item)) return false;
+    
+    // Don't allow dragging backpack from slot 6 if it's currently opened
+    if (inventoryType === 'player' && item.slot === 6 && isBackpackItem((item as SlotWithItem).name)) {
+      // Could add additional logic here to check if backpack is opened
+      return true; // Allow dragging for now, but could be restricted
+    }
+    
     return canPurchaseItem(item, { type: inventoryType, groups: inventoryGroups }) && canCraftItem(item, inventoryType);
   }, [item, inventoryType, inventoryGroups]);
 
@@ -130,10 +152,20 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
       drop: (source) => {
         dispatch(closeTooltip());
         
-        // Check slot restrictions for action bar slots
+        // Enhanced slot restrictions for action bar slots (bespoke slots)
         if (inventoryType === 'player' && item.slot <= 9 && source.item) {
           const sourceItem = source.item as SlotWithItem;
           if (!isValidItemForSlot(sourceItem, item.slot)) {
+            console.log(`Item ${sourceItem.name} cannot be placed in slot ${item.slot}`);
+            return;
+          }
+        }
+        
+        // Enhanced backpack handling for slot 6
+        if (inventoryType === 'player' && item.slot === 6 && source.item) {
+          const sourceItem = source.item as SlotWithItem;
+          if (!isBackpackItem(sourceItem.name)) {
+            console.log(`Only backpacks can be placed in slot 6`);
             return;
           }
         }
@@ -146,7 +178,6 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
             onCraft(source, { inventory: inventoryType, item: { slot: item.slot } });
             break;
           default:
-            // Use the standard onDrop - ox_inventory handles different inventory types automatically
             onDrop(source, { inventory: inventoryType, item: { slot: item.slot } });
             break;
         }
@@ -156,10 +187,20 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
           inventoryType !== InventoryType.SHOP &&
           inventoryType !== InventoryType.CRAFTING;
         
-        // Additional check for action bar slot restrictions
+        // Additional check for action bar slot restrictions (bespoke slots)
         if (basicCanDrop && inventoryType === 'player' && item.slot <= 9 && source.item) {
           const sourceItem = source.item as SlotWithItem;
-          return isValidItemForSlot(sourceItem, item.slot);
+          if (!isValidItemForSlot(sourceItem, item.slot)) {
+            return false;
+          }
+        }
+        
+        // Additional check for backpack slot restrictions
+        if (basicCanDrop && inventoryType === 'player' && item.slot === 6 && source.item) {
+          const sourceItem = source.item as SlotWithItem;
+          if (!isBackpackItem(sourceItem.name)) {
+            return false;
+          }
         }
         
         return basicCanDrop;
@@ -200,6 +241,22 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
     }
   };
 
+  const handleMouseEnter = useCallback(() => {
+    if (!isSlotWithItem(item)) return;
+    
+    timerRef.current = window.setTimeout(() => {
+      dispatch(openTooltip({ item, inventoryType }));
+    }, 500);
+  }, [item, inventoryType, dispatch]);
+
+  const handleMouseLeave = useCallback(() => {
+    dispatch(closeTooltip());
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, [dispatch]);
+
   const refs = useMergeRefs([connectRef, ref]);
 
   // Determine background image - only for items, not placeholders
@@ -215,7 +272,11 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
       ref={refs}
       onContextMenu={handleContext}
       onClick={handleClick}
-      className={`inventory-slot ${inventoryType === 'player' && item.slot <= 9 ? `hotbar-slot slot-${item.slot}` : ''}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      className={`inventory-slot${
+        inventoryType === 'player' && item.slot <= 9 ? ` hotbar-slot hotbar-slot-${item.slot}` : ''
+      }`}
       style={{
         filter:
           !canPurchaseItem(item, { type: inventoryType, groups: inventoryGroups }) || !canCraftItem(item, inventoryType)
@@ -226,7 +287,7 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
         border: isOver ? '1px dashed rgba(255,255,255,0.4)' : '',
       }}
     >
-      {/* Placeholder overlay for empty action bar slots */}
+      {/* Placeholder overlay for empty bespoke slots */}
       {inventoryType === 'player' && item.slot <= 9 && !isSlotWithItem(item) && (
         <div
           style={{
@@ -245,44 +306,26 @@ const InventorySlot: React.ForwardRefRenderFunction<HTMLDivElement, SlotProps> =
         />
       )}
       
+      {/* Show slot numbers only for slots 1-5 (keybindable slots) */}
+      {inventoryType === 'player' && item.slot <= 5 && (
+        <div className="inventory-slot-number">{item.slot}</div>
+      )}
+      
       {isSlotWithItem(item) && (
-        <div
-          className="item-slot-wrapper"
-          onMouseEnter={() => {
-            timerRef.current = window.setTimeout(() => {
-              dispatch(openTooltip({ item, inventoryType }));
-            }, 500) as unknown as number;
-          }}
-          onMouseLeave={() => {
-            dispatch(closeTooltip());
-            if (timerRef.current) {
-              clearTimeout(timerRef.current);
-              timerRef.current = null;
-            }
-          }}
-        >
-          <div
-            className={
-              // Show hotbar styling for slots 1-9 in player inventory (both in main inventory and hotbar)
-              inventoryType === 'player' && item.slot <= 9 ? 'item-hotslot-header-wrapper' : 'item-slot-header-wrapper'
-            }
-          >
-            {/* Show slot number ONLY for slots 1-5 in player inventory (keybindable slots) */}
-            {inventoryType === 'player' && item.slot <= 5 && <div className="inventory-slot-number">{item.slot}</div>}
-            <div className="item-slot-info-wrapper">
-              <p>
-                {item.weight > 0
-                  ? item.weight >= 1000
-                    ? `${(item.weight / 1000).toLocaleString('en-us', {
-                        minimumFractionDigits: 2,
-                      })}kg `
-                    : `${item.weight.toLocaleString('en-us', {
-                        minimumFractionDigits: 0,
-                      })}g `
-                  : ''}
-              </p>
-              <p>{item.count ? item.count.toLocaleString('en-us') + `x` : ''}</p>
-            </div>
+        <div className="item-slot-wrapper">
+          <div className="item-slot-info-wrapper">
+            <p>
+              {item.weight > 0
+                ? item.weight >= 1000
+                  ? `${(item.weight / 1000).toLocaleString('en-us', {
+                      minimumFractionDigits: 2,
+                    })}kg `
+                  : `${item.weight.toLocaleString('en-us', {
+                      minimumFractionDigits: 0,
+                    })}g `
+                : ''}
+            </p>
+            <p>{item.count ? item.count.toLocaleString('en-us') + `x` : ''}</p>
           </div>
           <div>
             {inventoryType !== 'shop' && item?.durability !== undefined && (

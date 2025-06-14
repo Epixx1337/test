@@ -310,6 +310,13 @@ function client.openInventory(inv, data)
         end)
     end
 
+	-- Add this at the very end of the client.openInventory function, before the final return
+	if success then
+		SetTimeout(300, function()
+			TriggerServerEvent('ox_inventory:checkBackpackSlot')
+		end)
+	end
+
     return true
 end
 
@@ -1907,22 +1914,18 @@ RegisterNUICallback('craftItem', function(data, cb)
 		client.openInventory('crafting', { id = id, index = index })
 	end
 end)
-
--- Add this to your existing client.lua file
-
--- Handle backpack equipped in slot 6 - receive full inventory data
+-- Add these new event handlers for backpack support
 RegisterNetEvent('ox_inventory:backpackEquipped', function(data)
     SendNUIMessage({
         action = 'addBackpackStash',
         data = {
             slot = data.slot,
             stashId = data.stashId,
-            inventory = data.inventory -- Full inventory data from server
+            inventory = data.inventory
         }
     })
 end)
 
--- Handle backpack removed from slot 6
 RegisterNetEvent('ox_inventory:backpackRemoved', function(slot)
     SendNUIMessage({
         action = 'removeBackpackStash',
@@ -1930,30 +1933,6 @@ RegisterNetEvent('ox_inventory:backpackRemoved', function(slot)
             slot = slot
         }
     })
-end)
-
--- Check backpack slot when inventory opens
-AddEventHandler('ox_inventory:openInventory', function()
-    SetTimeout(300, function()
-        TriggerServerEvent('ox_inventory:checkBackpackSlot')
-    end)
-end)
-
--- Check backpack slot when inventory closes
-AddEventHandler('ox_inventory:closeInventory', function()
-    SendNUIMessage({
-        action = 'removeBackpackStash',
-        data = {
-            slot = 6
-        }
-    })
-end)
-
--- Monitor inventory changes
-RegisterNetEvent('ox_inventory:updateSlots', function(data)
-    SetTimeout(200, function()
-        TriggerServerEvent('ox_inventory:checkBackpackSlot')
-    end)
 end)
 
 lib.callback.register('ox_inventory:getVehicleData', function(netid)

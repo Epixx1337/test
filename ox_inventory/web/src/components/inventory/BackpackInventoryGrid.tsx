@@ -60,7 +60,7 @@ const BackpackInventoryGrid: React.FC<BackpackInventoryGridProps> = ({ inventory
                 key={`backpack-${inventory.id}-${item.slot}`}
                 item={item}
                 ref={index === (page + 1) * PAGE_SIZE - 1 ? ref : null}
-                inventoryType="stash" // Use stash type for proper DnD handling
+                inventoryType="stash"
                 inventoryGroups={inventory.groups}
                 inventoryId={inventory.id}
               />

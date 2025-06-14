@@ -4,6 +4,7 @@ import { store } from '../store';
 import { DragSource, DropTarget, InventoryType, SlotWithItem } from '../typings';
 import { moveSlots, stackSlots, swapSlots } from '../store/inventory';
 import { Items } from '../store/items';
+import { fetchNui } from '../utils/fetchNui';
 
 export const onDrop = (source: DragSource, target?: DropTarget) => {
   const { inventory: state } = store.getState();
@@ -43,6 +44,24 @@ export const onDrop = (source: DragSource, target?: DropTarget) => {
       : state.itemAmount === 0 || state.itemAmount > sourceSlot.count
       ? sourceSlot.count
       : state.itemAmount;
+
+  // Check if target is a backpack stash
+  const isBackpackDrop = targetInventory.type === 'stash' && 
+    state.backpackInventories.some(bp => bp.inventory.id === targetInventory.id);
+
+  if (isBackpackDrop) {
+    // Handle backpack drops via NUI
+    fetchNui('swapSlots', {
+      fromInventory: sourceInventory.id || sourceInventory.type,
+      fromSlot: sourceSlot.slot,
+      toInventory: targetInventory.id,
+      toSlot: targetSlot.slot,
+      fromType: sourceInventory.type,
+      toType: 'stash',
+      count: count,
+    });
+    return;
+  }
 
   const data = {
     fromSlot: sourceSlot,
