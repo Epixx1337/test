@@ -1,18 +1,32 @@
 import React from 'react';
-import InventoryGrid from './InventoryGrid';
 import { useAppSelector } from '../../store';
-import { selectRightInventory, selectRightInventoryCollapsed } from '../../store/inventory';
+import { selectRightInventory, selectOpenedRightBackpack } from '../../store/inventory';
+import InventoryGrid from './InventoryGrid';
+import BackpackContainer from './BackpackContainer';
 
 const RightInventory: React.FC = () => {
   const rightInventory = useAppSelector(selectRightInventory);
-  const rightInventoryCollapsed = useAppSelector(selectRightInventoryCollapsed);
+  const openedRightBackpack = useAppSelector(selectOpenedRightBackpack);
 
   return (
-    <InventoryGrid 
-      inventory={rightInventory} 
-      isLeft={false}
-      collapsed={rightInventoryCollapsed}
-    />
+    <div className="right-inventory-wrapper">
+      {/* Show regular right inventory if there's a right inventory */}
+      {rightInventory && (
+        <InventoryGrid
+          inventory={rightInventory}
+          maxRows={openedRightBackpack ? 3 : undefined}
+        />
+      )}
+      
+      {/* Show backpack container BELOW the right inventory */}
+      {openedRightBackpack && (
+        <div className="right-backpack-wrapper">
+          <BackpackContainer 
+            position="right" 
+          />
+        </div>
+      )}
+    </div>
   );
 };
 

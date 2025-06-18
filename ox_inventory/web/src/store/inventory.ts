@@ -1,6 +1,5 @@
-import { createSlice, PayloadAction, current } from '@reduxjs/toolkit';
-import { RootState } from '.';
-import { isPending, isFulfilled, isRejected } from '@reduxjs/toolkit';
+import { createSlice, createSelector, PayloadAction, isPending, isFulfilled, isRejected, current } from '@reduxjs/toolkit';
+import { RootState } from './index';
 import {
   moveSlotsReducer,
   refreshSlotsReducer,
@@ -8,8 +7,20 @@ import {
   stackSlotsReducer,
   swapSlotsReducer,
 } from '../reducers';
-import { State, BackpackInventory } from '../typings';
-import { Inventory } from '../typings';
+import { State, SlotWithItem } from '../typings';
+import { isSlotWithItem } from '../helpers';
+
+// Helper function to check if an item is a backpack
+const isBackpack = (itemName: string): boolean => {
+  const backpacks = [
+    'small_backpack',
+    'medium_backpack', 
+    'large_backpack',
+    'tactical_backpack',
+    'hiking_backpack'
+  ];
+  return backpacks.includes(itemName.toLowerCase());
+};
 
 const initialState: State = {
   leftInventory: {
@@ -30,9 +41,12 @@ const initialState: State = {
   itemAmount: 0,
   shiftPressed: false,
   isBusy: false,
-  backpackInventories: [],
-  leftInventoryCollapsed: false,
-  rightInventoryCollapsed: false,
+  openedRightBackpack: null,
+  
+  // NEW: Step 8 additions
+  leftBackpackData: null,
+  rightBackpackData: null,
+  lastContainerUpdate: 0,
 };
 
 export const inventorySlice = createSlice({
@@ -43,7 +57,65 @@ export const inventorySlice = createSlice({
     swapSlots: swapSlotsReducer,
     setupInventory: setupInventoryReducer,
     moveSlots: moveSlotsReducer,
-    refreshSlots: refreshSlotsReducer,
+    refreshSlots: (state, action: PayloadAction<any>) => {
+      // Call the original refreshSlots reducer
+      refreshSlotsReducer(state, action);
+      
+      // NEW: Also update backpack data when slots are refreshed
+      if (action.payload.items) {
+        if (!Array.isArray(action.payload.items)) action.payload.items = [action.payload.items];
+        
+        // Check if this is a backpack container refresh
+        const rightInventoryId = state.rightInventory?.id;
+        const isBackpackContainer = rightInventoryId && rightInventoryId.includes('backpack_');
+        
+        if (isBackpackContainer) {
+          // Get current equipped backpacks to determine which data to update
+          const equippedBackpack = state.leftInventory.items.find(item => 
+            item.slot === 6 && item.name && isSlotWithItem(item) && isBackpack(item.name)
+          );
+          const rightBackpack = state.openedRightBackpack;
+          
+          // Determine which backpack this container belongs to (same logic as interceptor)
+          let targetPosition: 'left' | 'right' | null = null;
+          
+          if (equippedBackpack && equippedBackpack.name && rightInventoryId.includes(equippedBackpack.name)) {
+            targetPosition = 'left';
+          } else if (rightBackpack && rightBackpack.name && rightInventoryId.includes(rightBackpack.name)) {
+            targetPosition = 'right';
+          }
+          
+          if (targetPosition) {
+            // Update the appropriate backpack data
+            const currentBackpackData = targetPosition === 'left' ? state.leftBackpackData : state.rightBackpackData;
+            
+            if (currentBackpackData) {
+              // Create updated backpack data
+              const updatedBackpackData = {
+                ...currentBackpackData,
+                items: [...currentBackpackData.items]
+              };
+              
+              // Update the specific slots that changed
+              action.payload.items.forEach((data: any) => {
+                if (data && data.inventory && data.inventory !== 'player') {
+                  updatedBackpackData.items[data.item.slot - 1] = data.item;
+                }
+              });
+              
+              // Store the updated data
+              if (targetPosition === 'left') {
+                state.leftBackpackData = updatedBackpackData;
+              } else {
+                state.rightBackpackData = updatedBackpackData;
+              }
+              
+              console.log(`[REFRESH] Updated ${targetPosition.toUpperCase()} backpack data`);
+            }
+          }
+        }
+      }
+    },
     setAdditionalMetadata: (state, action: PayloadAction<Array<{ metadata: string; value: string }>>) => {
       const metadata = [];
 
@@ -60,6 +132,7 @@ export const inventorySlice = createSlice({
     setShiftPressed: (state, action: PayloadAction<boolean>) => {
       state.shiftPressed = action.payload;
     },
+    // FIXED: Keep existing setContainerWeight structure
     setContainerWeight: (state, action: PayloadAction<number>) => {
       const container = state.leftInventory.items.find((item) => item.metadata?.container === state.rightInventory.id);
 
@@ -67,43 +140,35 @@ export const inventorySlice = createSlice({
 
       container.weight = action.payload;
     },
-    addBackpackInventory: (state, action: PayloadAction<{ slot: number; inventory: Inventory; container: string }>) => {
-      const { slot, inventory, container } = action.payload;
-      
-      // Remove any existing backpack for this slot
-      state.backpackInventories = state.backpackInventories.filter(bp => bp.slot !== slot);
-      
-      // Add the new backpack inventory
-      state.backpackInventories.push({
-        slot,
-        inventory,
-        container,
-        collapsed: false,
-      });
+    // Existing actions for right-side backpack management
+    openRightBackpack: (state, action: PayloadAction<SlotWithItem>) => {
+      state.openedRightBackpack = action.payload;
     },
-    removeBackpackInventory: (state, action: PayloadAction<number>) => {
-      const slot = action.payload;
-      state.backpackInventories = state.backpackInventories.filter(bp => bp.slot !== slot);
+    closeRightBackpack: (state) => {
+      state.openedRightBackpack = null;
+      // Also clear right backpack data when closing
+      state.rightBackpackData = null;
     },
-    toggleBackpackCollapsed: (state, action: PayloadAction<number>) => {
-      const slot = action.payload;
-      const backpack = state.backpackInventories.find(bp => bp.slot === slot);
-      if (backpack) {
-        backpack.collapsed = !backpack.collapsed;
+    
+    // NEW: Step 8 Independent container data actions
+    setLeftBackpackData: (state, action: PayloadAction<any>) => {
+      state.leftBackpackData = action.payload;
+      state.lastContainerUpdate = Date.now();
+    },
+    
+    setRightBackpackData: (state, action: PayloadAction<any>) => {
+      state.rightBackpackData = action.payload;
+      state.lastContainerUpdate = Date.now();
+    },
+    
+    clearBackpackData: (state, action: PayloadAction<'left' | 'right' | 'both'>) => {
+      if (action.payload === 'left' || action.payload === 'both') {
+        state.leftBackpackData = null;
       }
-    },
-    toggleLeftInventoryCollapsed: (state) => {
-      state.leftInventoryCollapsed = !state.leftInventoryCollapsed;
-    },
-    toggleRightInventoryCollapsed: (state) => {
-      state.rightInventoryCollapsed = !state.rightInventoryCollapsed;
-    },
-    updateBackpackInventory: (state, action: PayloadAction<{ container: string; inventory: Inventory }>) => {
-      const { container, inventory } = action.payload;
-      const backpack = state.backpackInventories.find(bp => bp.container === container);
-      if (backpack) {
-        backpack.inventory = inventory;
+      if (action.payload === 'right' || action.payload === 'both') {
+        state.rightBackpackData = null;
       }
+      state.lastContainerUpdate = Date.now();
     },
   },
   extraReducers: (builder) => {
@@ -128,6 +193,44 @@ export const inventorySlice = createSlice({
   },
 });
 
+// Selector to get the equipped backpack in slot 6
+export const selectEquippedBackpack = createSelector(
+  [(state: RootState) => state.inventory.leftInventory.items],
+  (items) => {
+    const slot6 = items.find(item => item.slot === 6);
+    if (slot6 && isSlotWithItem(slot6) && isBackpack(slot6.name)) {
+      return slot6;
+    }
+    return null;
+  }
+);
+
+// Selector to check if a backpack is equipped
+export const selectIsBackpackEquipped = createSelector(
+  [selectEquippedBackpack],
+  (backpack) => backpack !== null
+);
+
+// Selector to get backpack container ID
+export const selectBackpackContainerId = createSelector(
+  [selectEquippedBackpack],
+  (backpack) => backpack?.metadata?.container || null
+);
+
+// Selector to get the opened right-side backpack
+export const selectOpenedRightBackpack = (state: RootState) => state.inventory.openedRightBackpack;
+
+// Selector to check if a right-side backpack is open
+export const selectIsRightBackpackOpen = createSelector(
+  [selectOpenedRightBackpack],
+  (backpack) => backpack !== null
+);
+
+// NEW: Step 8 selectors
+export const selectLeftBackpackData = (state: RootState) => state.inventory.leftBackpackData;
+export const selectRightBackpackData = (state: RootState) => state.inventory.rightBackpackData;
+export const selectLastContainerUpdate = (state: RootState) => state.inventory.lastContainerUpdate;
+
 export const {
   setAdditionalMetadata,
   setItemAmount,
@@ -138,20 +241,17 @@ export const {
   stackSlots,
   refreshSlots,
   setContainerWeight,
-  addBackpackInventory,
-  removeBackpackInventory,
-  toggleBackpackCollapsed,
-  toggleLeftInventoryCollapsed,
-  toggleRightInventoryCollapsed,
-  updateBackpackInventory,
+  openRightBackpack,
+  closeRightBackpack,
+  // NEW: Step 8 actions
+  setLeftBackpackData,
+  setRightBackpackData,
+  clearBackpackData,
 } = inventorySlice.actions;
 
 export const selectLeftInventory = (state: RootState) => state.inventory.leftInventory;
 export const selectRightInventory = (state: RootState) => state.inventory.rightInventory;
 export const selectItemAmount = (state: RootState) => state.inventory.itemAmount;
 export const selectIsBusy = (state: RootState) => state.inventory.isBusy;
-export const selectBackpackInventories = (state: RootState) => state.inventory.backpackInventories;
-export const selectLeftInventoryCollapsed = (state: RootState) => state.inventory.leftInventoryCollapsed;
-export const selectRightInventoryCollapsed = (state: RootState) => state.inventory.rightInventoryCollapsed;
 
 export default inventorySlice.reducer;

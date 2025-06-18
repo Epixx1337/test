@@ -10,7 +10,6 @@ import SlideUp from '../utils/transitions/SlideUp';
 
 const InventoryHotbar: React.FC = () => {
   const [hotbarVisible, setHotbarVisible] = useState(false);
-  // Changed from slice(0, 9) to slice(0, 5) to only show keybindable slots
   const items = useAppSelector(selectLeftInventory).items.slice(0, 5);
 
   //stupid fix for timeout
@@ -27,10 +26,10 @@ const InventoryHotbar: React.FC = () => {
 
   return (
     <SlideUp in={hotbarVisible}>
-      <div className="hotbar-container-transparent">
+      <div className="hotbar-container">
         {items.map((item) => (
           <div
-            className={`hotbar-item-slot-transparent slot-${item.slot}`}
+            className="hotbar-item-slot"
             style={{
               backgroundImage: `url(${item?.name ? getItemUrl(item as SlotWithItem) : 'none'}`,
             }}

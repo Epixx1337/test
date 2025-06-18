@@ -1117,7 +1117,7 @@ function Inventory.AddItem(inv, item, count, metadata, slot, cb)
 		local items = inv.items
 		slotMetadata, slotCount = Items.Metadata(inv.id, item, metadata and table.clone(metadata) or {}, count)
 
-		for i = 10, inv.slots do
+		for i = 1, inv.slots do
 			local slotData = items[i]
 
 			if item.stack and slotData ~= nil and slotData.name == item.name and table.matches(slotData.metadata, slotMetadata) then
@@ -2111,8 +2111,11 @@ function Inventory.GetEmptySlot(inv)
 	if not inventory then return end
 
 	local items = inventory.items
+	
+	-- For player inventory, start from slot 10 to skip bespoke slots (1-9)
+	local startSlot = (inventory.type == 'player') and 10 or 1
 
-	for i = 10, inventory.slots do
+	for i = startSlot, inventory.slots do
 		if not items[i] then
 			return i
 		end
@@ -2134,13 +2137,25 @@ function Inventory.GetSlotForItem(inv, itemName, metadata)
 	local items = inventory.items
 	local emptySlot
 
-	for i = 10, inventory.slots do
+	-- For player inventory, start from slot 10 to skip bespoke slots (1-9)
+	local startSlot = (inventory.type == 'player') and 10 or 1
+
+	for i = 1, inventory.slots do
 		local slotData = items[i]
 
 		if item.stack and slotData and slotData.name == item.name and table.matches(slotData.metadata, metadata) then
 			return i
-		elseif not item.stack and not slotData and not emptySlot then
+		elseif not item.stack and not slotData and not emptySlot and i >= startSlot then
 			emptySlot = i
+		end
+	end
+
+	-- If no stackable slot found and item is stackable, look for empty slot starting from appropriate slot
+	if item.stack and not emptySlot then
+		for i = startSlot, inventory.slots do
+			if not items[i] then
+				return i
+			end
 		end
 	end
 

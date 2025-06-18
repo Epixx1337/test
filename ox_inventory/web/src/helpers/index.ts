@@ -160,3 +160,42 @@ export const getItemUrl = (item: string | SlotWithItem) => {
 
   return itemData.image;
 };
+
+// Helper function to check if an item is a backpack
+export const isBackpack = (itemName: string): boolean => {
+  const backpacks = [
+    'small_backpack',
+    'medium_backpack', 
+    'large_backpack',
+    'tactical_backpack',
+    'hiking_backpack'
+  ];
+  return backpacks.includes(itemName.toLowerCase());
+};
+
+// Helper function to get backpack properties
+export const getBackpackProperties = (backpackName: string) => {
+  const backpackData: Record<string, { slots: number; maxWeight: number; label: string }> = {
+    small_backpack: { slots: 15, maxWeight: 15000, label: 'Small Backpack' },
+    medium_backpack: { slots: 20, maxWeight: 25000, label: 'Medium Backpack' },
+    large_backpack: { slots: 25, maxWeight: 35000, label: 'Large Backpack' },
+    tactical_backpack: { slots: 30, maxWeight: 45000, label: 'Tactical Backpack' },
+    hiking_backpack: { slots: 35, maxWeight: 40000, label: 'Hiking Backpack' },
+  };
+  
+  return backpackData[backpackName.toLowerCase()] || {
+    slots: 20,
+    maxWeight: 25000,
+    label: backpackName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+  };
+};
+
+// Helper function to check if a backpack should auto-open (in slot 6)
+export const shouldAutoOpenBackpack = (item: SlotWithItem): boolean => {
+  return item.slot === 6 && isBackpack(item.name);
+};
+
+// Helper function to create container ID for backpack
+export const createBackpackContainerId = (item: SlotWithItem): string => {
+  return item.metadata?.container || `backpack_${item.name}_${Date.now()}`;
+};

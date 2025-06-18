@@ -3,43 +3,52 @@ import { Inventory } from '../../typings';
 import WeightBar from '../utils/WeightBar';
 import InventorySlot from './InventorySlot';
 import { getTotalWeight } from '../../helpers';
-import { useAppSelector, useAppDispatch } from '../../store';
+import { useAppSelector } from '../../store';
 import { useIntersection } from '../../hooks/useIntersection';
-import { toggleLeftInventoryCollapsed, toggleRightInventoryCollapsed } from '../../store/inventory';
 
 const PAGE_SIZE = 30;
 
 interface InventoryGridProps {
   inventory: Inventory;
-  isLeft?: boolean;
-  collapsed?: boolean;
-  hasBackpack?: boolean;
+  excludeBespokeSlots?: boolean;
+  maxRows?: number;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
+  title?: string;
 }
 
-const InventoryGrid: React.FC<InventoryGridProps> = ({ inventory, isLeft = false, collapsed = false, hasBackpack = false }) => {
-  const dispatch = useAppDispatch();
+const InventoryGrid: React.FC<InventoryGridProps> = ({ 
+  inventory, 
+  excludeBespokeSlots = false,
+  maxRows,
+  isCollapsed = false,
+  onToggleCollapse,
+  title
+}) => {
   const weight = useMemo(
     () => (inventory.maxWeight !== undefined ? Math.floor(getTotalWeight(inventory.items) * 1000) / 1000 : 0),
     [inventory.maxWeight, inventory.items]
   );
   const [page, setPage] = useState(0);
-  const containerRef = useRef(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { ref, entry } = useIntersection({ threshold: 0.5 });
   const isBusy = useAppSelector((state) => state.inventory.isBusy);
 
-  // Filter out slots 1-9 for player inventory - they will be shown in separate hotbar container
-  // For left inventory with backpack, only show 3 rows (slots 10-37) instead of all
-const filteredItems = useMemo(() => {
-  if (inventory.type === 'player') {
-    // Skip slots 1-9 and start from slot 10
-    const items = inventory.items.slice(9);
-    
-    // Keep all items but adjust visible height with CSS when backpack is equipped
-    // Don't actually remove items, just let CSS handle the visible area
-    return items;
-  }
-  return inventory.items;
-  }, [inventory.items, inventory.type, isLeft, hasBackpack]);
+  // Filter out bespoke slots (1-9) if this is the player inventory and excludeBespokeSlots is true
+  const filteredItems = useMemo(() => {
+    if (excludeBespokeSlots && inventory.type === 'player') {
+      return inventory.items.filter(item => item.slot < 1 || item.slot > 9);
+    }
+    return inventory.items;
+  }, [inventory.items, inventory.type, excludeBespokeSlots]);
+
+  // Calculate dynamic height based on maxRows
+  const containerHeight = useMemo(() => {
+    if (!maxRows) return undefined;
+    const gridSize = 'calc(10.2vh + 0.22vh)'; // $gridSize + row gap
+    const gap = '2px'; // $gridGap
+    return `calc(${maxRows} * ${gridSize} + ${maxRows - 1} * ${gap})`;
+  }, [maxRows]);
 
   useEffect(() => {
     if (entry && entry.isIntersecting) {
@@ -47,41 +56,59 @@ const filteredItems = useMemo(() => {
     }
   }, [entry]);
 
-  const handleToggleCollapse = () => {
-    if (isLeft) {
-      dispatch(toggleLeftInventoryCollapsed());
-    } else {
-      dispatch(toggleRightInventoryCollapsed());
-    }
-  };
-
-  // Apply special grid height for left inventory with backpack
-  const getGridClass = () => {
-    let className = 'inventory-grid-container';
-    if (isLeft && hasBackpack) {
-      className += ' left-inventory-with-backpack';
-    }
-    return className;
-  };
-
-  return (
-    <div className="inventory-grid-wrapper" style={{ pointerEvents: isBusy ? 'none' : 'auto' }}>
-      <div>
+  if (isCollapsed) {
+    return (
+      <div className="inventory-grid-wrapper collapsed" style={{ pointerEvents: isBusy ? 'none' : 'auto' }}>
         <div className="inventory-grid-header-wrapper">
-          <div className="inventory-header-content" onClick={handleToggleCollapse}>
-            <p>{inventory.label}</p>
-            <span className="collapse-indicator">{collapsed ? '▼' : '▲'}</span>
+          <p>{title || inventory.label}</p>
+          <div className="inventory-controls">
+            {inventory.maxWeight && (
+              <p>
+                {weight / 1000}/{inventory.maxWeight / 1000}kg
+              </p>
+            )}
+            {onToggleCollapse && (
+              <button className="collapse-toggle" onClick={onToggleCollapse}>
+                ▼
+              </button>
+            )}
           </div>
-          {inventory.maxWeight && !collapsed && (
-            <p>
-              {weight / 1000}/{inventory.maxWeight / 1000}kg
-            </p>
-          )}
         </div>
-        {!collapsed && <WeightBar percent={inventory.maxWeight ? (weight / inventory.maxWeight) * 100 : 0} />}
       </div>
-      {!collapsed && (
-        <div className={getGridClass()} ref={containerRef}>
+    );
+  }
+  
+  return (
+    <>
+      <div className="inventory-grid-wrapper" style={{ pointerEvents: isBusy ? 'none' : 'auto' }}>
+        <div>
+          <div className="inventory-grid-header-wrapper">
+            <p>{title || inventory.label}</p>
+            <div className="inventory-controls">
+              {inventory.maxWeight && (
+                <p>
+                  {weight / 1000}/{inventory.maxWeight / 1000}kg
+                </p>
+              )}
+              {onToggleCollapse && (
+                <button className="collapse-toggle" onClick={onToggleCollapse}>
+                  ▲
+                </button>
+              )}
+            </div>
+          </div>
+          <WeightBar percent={inventory.maxWeight ? (weight / inventory.maxWeight) * 100 : 0} />
+        </div>
+        <div 
+          className={`inventory-grid-container ${maxRows ? 'limited-rows' : ''}`}
+          ref={containerRef}
+          style={maxRows ? { 
+            height: containerHeight,
+            maxHeight: containerHeight,
+            overflowY: 'auto',
+            overflowX: 'hidden'
+          } : undefined}
+        >
           <>
             {filteredItems.slice(0, (page + 1) * PAGE_SIZE).map((item, index) => (
               <InventorySlot
@@ -95,8 +122,8 @@ const filteredItems = useMemo(() => {
             ))}
           </>
         </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 };
 

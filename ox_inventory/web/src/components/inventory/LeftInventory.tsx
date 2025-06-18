@@ -1,38 +1,37 @@
-import React from 'react';
+import React, { useState } from 'react';
 import InventoryGrid from './InventoryGrid';
-import BackpackInventoryGrid from './BackpackInventoryGrid';
+import BespokeSlots from './BespokeSlots';
+import BackpackContainer from './BackpackContainer';
 import { useAppSelector } from '../../store';
-import { selectLeftInventory, selectBackpackInventories, selectLeftInventoryCollapsed } from '../../store/inventory';
+import { selectLeftInventory, selectIsBackpackEquipped } from '../../store/inventory';
 
 const LeftInventory: React.FC = () => {
   const leftInventory = useAppSelector(selectLeftInventory);
-  const backpackInventories = useAppSelector(selectBackpackInventories);
-  const leftInventoryCollapsed = useAppSelector(selectLeftInventoryCollapsed);
+  const isBackpackEquipped = useAppSelector(selectIsBackpackEquipped);
+  const [isMainCollapsed, setIsMainCollapsed] = useState(false);
 
-  const hasBackpack = backpackInventories.length > 0;
+  const handleToggleMainCollapse = () => {
+    setIsMainCollapsed(!isMainCollapsed);
+  };
 
   return (
     <div className="left-inventory-wrapper">
+      {/* Main inventory grid */}
       <InventoryGrid 
         inventory={leftInventory} 
-        isLeft={true} 
-        collapsed={leftInventoryCollapsed}
-        hasBackpack={hasBackpack}
+        excludeBespokeSlots={true}
+        maxRows={isBackpackEquipped ? 3 : undefined}
+        isCollapsed={isMainCollapsed}
+        onToggleCollapse={handleToggleMainCollapse}
       />
       
-      {/* Render backpack inventories below the main inventory */}
-      {hasBackpack && (
-        <div className="backpack-inventories-container">
-          {backpackInventories.map((backpack) => (
-            <BackpackInventoryGrid
-              key={`backpack-${backpack.slot}-${backpack.container}`}
-              inventory={backpack.inventory}
-              slot={backpack.slot}
-              collapsed={backpack.collapsed}
-            />
-          ))}
-        </div>
+      {/* Backpack container (only shows when backpack is equipped in slot 6) */}
+      {isBackpackEquipped && !isMainCollapsed && (
+        <BackpackContainer position="left" />
       )}
+      
+      {/* Bespoke slots bar at the bottom */}
+      <BespokeSlots />
     </div>
   );
 };

@@ -14,33 +14,6 @@ local db = require 'modules.mysql.server'
 local Items = require 'modules.items.server'
 local Inventory = require 'modules.inventory.server'
 
--- Backpack configuration
-local backpackData = {
-    small_backpack = { slots = 10, weight = 20000 },
-    medium_backpack = { slots = 15, weight = 35000 },
-    large_backpack = { slots = 20, weight = 50000 },
-    tactical_backpack = { slots = 25, weight = 45000 },
-    hiking_backpack = { slots = 30, weight = 60000 }
-}
-
--- Function to ensure backpack stash exists
-local function ensureBackpackStash(source, item)
-    if not item or not item.name or not backpackData[item.name] then return nil end
-    
-    if not item.metadata then item.metadata = {} end
-    
-    if not item.metadata.stashId then
-        item.metadata.stashId = ('backpack_%s_%s_%s'):format(source, item.name, os.time())
-    end
-    
-    local stashId = item.metadata.stashId
-    local itemConfig = backpackData[item.name]
-    local label = Items(item.name)?.label or item.name
-    
-    exports.ox_inventory:RegisterStash(stashId, label, itemConfig.slots, itemConfig.weight, source)
-    return stashId
-end
-
 ---@param player table
 ---@param data table?
 --- player requires source, identifier, and name
@@ -409,28 +382,6 @@ lib.callback.register('ox_inventory:useItem', function(source, itemName, slot, m
 		if not data then return end
 
 		slot = data.slot
-		
-		-- Enhanced backpack handling
-		if backpackData[data.name] then
-			ensureBackpackStash(source, data)
-			
-			if slot == 6 then
-				-- Don't consume backpack when equipped in slot 6, just trigger check
-				SetTimeout(100, function()
-					TriggerEvent('ox_inventory:checkBackpackSlot', source)
-				end)
-				return true
-			else
-				-- Open backpack stash when right-clicking from other slots
-				local stashId = ensureBackpackStash(source, data)
-				if stashId then
-					local success = exports.ox_inventory:forceOpenInventory(source, 'stash', stashId)
-					return success
-				end
-				return false
-			end
-		end
-		
 		local durability = data.metadata.durability --[[@as number|boolean|nil]]
 		local consume = item.consume
 		local label = data.metadata.label or item.label
@@ -595,6 +546,7 @@ RegisterCommand('convertinventory', function(source, args)
 	CreateThread(convert)
 end, true)
 
+
 lib.addCommand({'additem', 'giveitem'}, {
 	help = 'Gives an item to a player with the given id',
 	params = {
@@ -749,69 +701,126 @@ lib.addCommand('viewinv', {
 	Inventory.InspectInventory(source, tonumber(args.invId) or args.invId)
 end)
 
--- Backpack slot checking event
-RegisterNetEvent('ox_inventory:checkBackpackSlot', function()
-    local source = source
-    local inventory = Inventory(source)
+-- ===== REPLACE YOUR BACKPACK SERVER FUNCTIONS WITH THIS SIMPLIFIED VERSION =====
+-- ===== Simple Backpack Container System - Step 5: Simplified Server =====
+
+-- Simple tracking - just prevent same container opening twice
+local ActiveContainers = {} -- [containerId] = true
+
+-- Backpack Properties 
+local BACKPACK_PROPS = {
+    small_backpack = { slots = 15, maxWeight = 15000 },
+    medium_backpack = { slots = 20, maxWeight = 25000 },
+    large_backpack = { slots = 25, maxWeight = 35000 },
+    tactical_backpack = { slots = 30, maxWeight = 45000 },
+    hiking_backpack = { slots = 35, maxWeight = 40000 }
+}
+
+-- Simple validation
+local function validateBackpackData(data)
+    if not data or not data.backpackItem or not data.backpackItem.metadata or 
+       not data.backpackItem.metadata.container or not data.backpackItem.name then
+        return false, "Invalid backpack data"
+    end
     
-    if not inventory then return end
+    if not BACKPACK_PROPS[data.backpackItem.name] then
+        return false, "Unknown backpack type: " .. data.backpackItem.name
+    end
     
-    local backpackItem = inventory.items[6]
-    if backpackItem and backpackItem.name and backpackData[backpackItem.name] then
-        local stashId = ensureBackpackStash(source, backpackItem)
-        
-        if stashId then
-            local success, stashInventory = pcall(function()
-                return exports.ox_inventory:GetInventory(stashId)
-            end)
-            
-            if success and stashInventory then
-                local inventoryData = {
-                    id = stashInventory.id,
-                    type = 'stash',
-                    label = stashInventory.label,
-                    slots = stashInventory.slots,
-                    maxWeight = stashInventory.maxWeight,
-                    items = {},
-                    groups = stashInventory.groups or {}
-                }
-                
-                for i = 1, stashInventory.slots do
-                    local item = stashInventory.items[i]
-                    inventoryData.items[i] = item or { slot = i }
-                end
-                
-                TriggerClientEvent('ox_inventory:backpackEquipped', source, {
-                    slot = 6,
-                    stashId = stashId,
-                    inventory = inventoryData
-                })
-            end
-        end
-    else
-        TriggerClientEvent('ox_inventory:backpackRemoved', source, 6)
-    end
-end)
+    return true, "Valid"
+end
 
--- Event handler for when items are added (crafted/bought)
-AddEventHandler('ox_inventory:itemAdded', function(source, item, slot)
-    if backpackData[item.name] then
-        ensureBackpackStash(source, item)
+-- Simple server event handler
+RegisterServerEvent('ox_inventory:openBackpackContainer')
+AddEventHandler('ox_inventory:openBackpackContainer', function(data)
+    local src = source
+    
+    print('^2[BACKPACK] Opening container for player ' .. src .. '^0')
+    
+    -- Validate data
+    local isValid, error = validateBackpackData(data)
+    if not isValid then
+        print('^1[BACKPACK] ERROR: ' .. error .. '^0')
+        return
     end
-end)
-
--- Hook into slot swaps to detect backpack movement
-AddEventHandler('ox_inventory:swapSlots', function(data)
-    if data.toSlot == 6 or data.fromSlot == 6 then
-        SetTimeout(200, function()
-            TriggerEvent('ox_inventory:checkBackpackSlot', data.source or data.playerId)
-        end)
+    
+    local backpackItem = data.backpackItem
+    local containerId = backpackItem.metadata.container
+    local props = BACKPACK_PROPS[backpackItem.name]
+    
+    -- Check if container is already registered and just open it
+    if ActiveContainers[containerId] then
+        print('^3[BACKPACK] Container already exists, opening: ' .. containerId .. '^0')
+        exports.ox_inventory:forceOpenInventory(src, 'stash', containerId)
+        return
     end
-end)
-
--- Enhanced inventory opening hook
-AddEventHandler('ox_inventory:openInventory', function(source, rightInventory)
-    SetTimeout(500, function()
-        TriggerEvent('ox_inventory:checkBackpackSlot', source)
+    
+    -- Get numeric values
+    local slots = tonumber(props.slots)
+    local maxWeight = tonumber(props.maxWeight)
+    
+    if not slots or not maxWeight then
+        print('^1[BACKPACK] ERROR: Invalid props for ' .. backpackItem.name .. '^0')
+        return
+    end
+    
+    -- Register stash
+    local containerLabel = (backpackItem.label or backpackItem.name) .. ' Container'
+    
+    print('^2[BACKPACK] Registering: ' .. containerId .. ' (' .. slots .. ' slots, ' .. maxWeight .. 'g)^0')
+    
+    local success, regError = pcall(function()
+        exports.ox_inventory:RegisterStash(containerId, containerLabel, slots, maxWeight, false)
     end)
+    
+    if not success then
+        print('^1[BACKPACK] RegisterStash failed: ' .. tostring(regError) .. '^0')
+        return
+    end
+    
+    -- Mark as active
+    ActiveContainers[containerId] = true
+    
+    -- Open container
+    local openSuccess, openError = pcall(function()
+        exports.ox_inventory:forceOpenInventory(src, 'stash', containerId)
+    end)
+    
+    if not openSuccess then
+        print('^1[BACKPACK] Open failed: ' .. tostring(openError) .. '^0')
+        ActiveContainers[containerId] = nil
+        return
+    end
+    
+    print('^2[BACKPACK] Container opened successfully: ' .. containerId .. '^0')
 end)
+
+-- Simple close handler
+RegisterServerEvent('ox_inventory:closeBackpackContainer')
+AddEventHandler('ox_inventory:closeBackpackContainer', function(data)
+    print('^1[BACKPACK] Close request received^0')
+    -- Don't remove from ActiveContainers - let it stay registered for future use
+end)
+
+-- Cleanup on disconnect
+AddEventHandler('playerDropped', function()
+    print('^3[BACKPACK] Player disconnected: ' .. source .. '^0')
+    -- Keep containers registered - they'll be cleaned up by ox_inventory
+end)
+
+-- Simple debug commands
+RegisterCommand('checkbackpack', function(source)
+    print('^6=== SIMPLE BACKPACK DEBUG ===^0')
+    print('^3Active Containers:^0')
+    for containerId in pairs(ActiveContainers) do
+        print('  - ' .. containerId)
+    end
+    print('^6===========================^0')
+end, false)
+
+RegisterCommand('clearbackpacks', function()
+    ActiveContainers = {}
+    print('^2[BACKPACK] Cleared container list^0')
+end, false)
+
+print('^2[BACKPACK] Simple backpack server system loaded - Step 5 applied^0')

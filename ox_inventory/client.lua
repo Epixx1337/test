@@ -34,9 +34,6 @@ local plyState = LocalPlayer.state
 local IsPedCuffed = IsPedCuffed
 local playerPed = cache.ped
 
--- Track backpack stash state
-local backpackStash = nil
-
 lib.onCache('ped', function(ped)
 	playerPed = ped
 	Utils.WeaponWheel()
@@ -312,11 +309,6 @@ function client.openInventory(inv, data)
             if invOpen then client.closeInventory() end
         end)
     end
-
-    -- Check for backpack after opening inventory
-    SetTimeout(300, function()
-        TriggerServerEvent('ox_inventory:checkBackpackSlot')
-    end)
 
     return true
 end
@@ -906,13 +898,6 @@ function client.closeInventory(server)
 		currentInventory = nil
 		plyState.invOpen = false
 		defaultInventory.coords = nil
-		
-		-- Clear backpack stash when closing inventory
-		backpackStash = nil
-		SendNUIMessage({
-			action = 'removeBackpackStash',
-			data = { slot = 6 }
-		})
 	end
 end
 
@@ -992,11 +977,6 @@ local function updateInventory(data, weight)
 
 	client.setPlayerData('inventory', PlayerData.inventory)
 	TriggerEvent('ox_inventory:updateInventory', changes)
-	
-	-- Check backpack slot after any inventory update
-	SetTimeout(200, function()
-		TriggerServerEvent('ox_inventory:checkBackpackSlot')
-	end)
 end
 
 RegisterNetEvent('ox_inventory:updateSlots', function(items, weights)
@@ -1853,12 +1833,6 @@ RegisterNUICallback('swapItems', function(data, cb)
 		end
 	end
 
-	-- Handle backpack stash as target
-	if backpackStash and data.toType == 'stash' and data.toInventory == backpackStash then
-		data.toType = 'stash'
-		data.toInventory = backpackStash
-	end
-
 	local success, response, weaponSlot = lib.callback.await('ox_inventory:swapItems', false, data)
     swapActive = false
 
@@ -1934,32 +1908,6 @@ RegisterNUICallback('craftItem', function(data, cb)
 	end
 end)
 
--- Handle backpack equipped in slot 6 - receive full inventory data
-RegisterNetEvent('ox_inventory:backpackEquipped', function(data)
-	backpackStash = data.stashId
-	
-    SendNUIMessage({
-        action = 'addBackpackStash',
-        data = {
-            slot = data.slot,
-            stashId = data.stashId,
-            inventory = data.inventory -- Full inventory data from server
-        }
-    })
-end)
-
--- Handle backpack removed from slot 6
-RegisterNetEvent('ox_inventory:backpackRemoved', function(slot)
-	backpackStash = nil
-	
-    SendNUIMessage({
-        action = 'removeBackpackStash',
-        data = {
-            slot = slot
-        }
-    })
-end)
-
 lib.callback.register('ox_inventory:getVehicleData', function(netid)
 	local entity = NetworkGetEntityFromNetworkId(netid)
 
@@ -1967,3 +1915,60 @@ lib.callback.register('ox_inventory:getVehicleData', function(netid)
 		return GetEntityModel(entity), GetVehicleClass(entity)
 	end
 end)
+
+-- ===== REPLACE ALL YOUR BACKPACK CLIENT CODE WITH THIS MUCH SIMPLER VERSION =====
+-- ===== Simple Backpack Container System - Step 5: Back to Basics =====
+
+-- Simple debouncing to prevent spam (but don't block legitimate requests)
+local BackpackDebounce = {
+    lastRequest = 0,
+    DEBOUNCE_TIME = 500 -- Only 500ms debounce, much shorter
+}
+
+-- Simple container opening function
+local function openBackpackContainer(data)
+    local currentTime = GetGameTimer()
+    
+    -- Very basic debouncing - only prevent rapid spam
+    if (currentTime - BackpackDebounce.lastRequest) < BackpackDebounce.DEBOUNCE_TIME then
+        print("^3[BACKPACK] Request too fast, ignoring^0")
+        return false
+    end
+    
+    BackpackDebounce.lastRequest = currentTime
+    
+    print("^2[BACKPACK] Sending container request for: " .. (data.backpackItem.name or "unknown") .. "^0")
+    TriggerServerEvent('ox_inventory:openBackpackContainer', data)
+    
+    return true
+end
+
+-- Simple NUI Callbacks (no complex state management)
+RegisterNUICallback('openBackpackContainer', function(data, cb)
+    print("^4[BACKPACK] NUI request: " .. (data.backpackItem and data.backpackItem.name or "unknown") .. "^0")
+    
+    local success = openBackpackContainer(data)
+    cb(success and 'ok' or 'blocked')
+end)
+
+RegisterNUICallback('closeBackpackContainer', function(data, cb)
+    print("^1[BACKPACK] Close request^0")
+    TriggerServerEvent('ox_inventory:closeBackpackContainer', data)
+    cb('ok')
+end)
+
+-- Simple debug command
+RegisterCommand('debugbackpack', function()
+    print("^6=== SIMPLE BACKPACK DEBUG ===^0")
+    print("^3Last Request: " .. (GetGameTimer() - BackpackDebounce.lastRequest) .. "ms ago^0")
+    print("^3Debounce Time: " .. BackpackDebounce.DEBOUNCE_TIME .. "ms^0")
+    print("^6===========================^0")
+end, false)
+
+-- Reset command
+RegisterCommand('resetbackpack', function()
+    BackpackDebounce.lastRequest = 0
+    print("^2[BACKPACK] Reset debounce state^0")
+end, false)
+
+print("^2[BACKPACK] Simple backpack system loaded - Step 5 applied^0")
